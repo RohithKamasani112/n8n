@@ -4,35 +4,34 @@ FROM node:20-alpine AS build
 # Install build tools
 RUN apk add --no-cache python3 make g++ git
 
+# Install pnpm (official n8n uses pnpm)
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 WORKDIR /data/n8n
 
-# Copy all files
+# Copy source code
 COPY . .
 
-# Install dependencies and build
-RUN npm ci && npm run build
+# Install dependencies & build
+RUN pnpm install --frozen-lockfile && pnpm build
 
-# --- Stage 2: Production stage ---
+# --- Stage 2: Runtime image ---
 FROM node:20-alpine
 
-# Install tini for proper process handling
+# Install tini (PID 1 handler)
 RUN apk add --no-cache tini
 
-# Environment setup
 ENV NODE_ENV=production \
     N8N_PORT=5678 \
     N8N_BASIC_AUTH_ACTIVE=false
 
 WORKDIR /data/n8n
 
-# Copy built files
+# Copy built files from build stage
 COPY --from=build /data/n8n /data/n8n
 
-# Expose n8n port
 EXPOSE 5678
 
-# Use tini as entrypoint
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Default command to start n8n
 CMD ["n8n", "start"]
