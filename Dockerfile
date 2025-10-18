@@ -1,42 +1,39 @@
-# Use a Node.js image as the base, as n8n is built on Node
+# --- Base build stage ---
 FROM node:20-alpine AS build
 
-# Set the working directory for the application
-WORKDIR /app
+# Install dependencies for building
+RUN apk add --no-cache python3 make g++ git
 
-# Copy package.json and package-lock.json (or yarn.lock) to install dependencies
-# This is done separately to leverage Docker layer caching
-COPY package*.json ./
+# Set working directory
+WORKDIR /data/n8n
 
-# Install application dependencies
-RUN npm install
-
-# Copy the rest of the application source code
+# Copy source code
 COPY . .
 
-# Build the application (if necessary, check n8n's specific build process)
-# For many Node apps, this is not needed if running directly via 'node server.js'
-# If n8n requires a specific build step, replace this with the actual command:
-# RUN npm run build 
+# Install dependencies & build
+RUN npm ci && npm run build
 
-# --- Stage 2: Production Image (Smaller and more secure) ---
+# --- Final runtime stage ---
 FROM node:20-alpine
 
-# Set non-root user for better security
-USER node
+# Install tini (to handle PID 1 properly)
+RUN apk add --no-cache tini
 
-# Set environment variables for n8n (if required, replace with actual values)
-# ENV NODE_ENV production
-# ENV N8N_HOST=0.0.0.0
+ENV NODE_ENV=production \
+    N8N_PORT=5678 \
+    N8N_BASIC_AUTH_ACTIVE=false
 
-# Set the working directory
-WORKDIR /home/node/app
+# Set working directory
+WORKDIR /data/n8n
 
-# Copy the installed dependencies and application code from the build stage
-COPY --from=build /app .
+# Copy built app from previous stage
+COPY --from=build /data/n8n /data/n8n
 
-# Expose the default port for n8n
+# Expose default port
 EXPOSE 5678
 
-# Command to run the n8n application
-CMD ["npm", "start"]
+# Use tini as entrypoint
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Start n8n
+CMD ["n8n", "start"]
