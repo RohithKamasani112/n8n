@@ -1,44 +1,46 @@
-# --- Stage 1: Build n8n ---
-FROM node:22.16.0-alpine AS builder
+# --- Stage 1: Build ---
+FROM node:22.17.0-bullseye-slim AS builder
 
-# Install build tools for native dependencies
-RUN apk add --no-cache python3 make g++ git libc6-compat
+# Install build tools
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    git \
+    libc6-dev \
+    bash \
+ && rm -rf /var/lib/apt/lists/*
 
-# Enable pnpm (official n8n uses pnpm)
+# Enable pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Set working directory
 WORKDIR /data/n8n
 
-# Copy source code
+# Copy repo
 COPY . .
 
-# Install dependencies and build
-RUN pnpm install --frozen-lockfile --unsafe-perm --reporter=append-only
+# Install dependencies & build
+RUN pnpm install --frozen-lockfile --unsafe-perm --reporter=append-only --shamefully-hoist
 RUN pnpm build --reporter=append-only
 
-# --- Stage 2: Runtime image ---
-FROM node:22.16.0-alpine
+# --- Stage 2: Runtime ---
+FROM node:22.17.0-bullseye-slim
 
 # Install runtime dependencies
-RUN apk add --no-cache tini graphicsmagick
+RUN apt-get update && apt-get install -y \
+    graphicsmagick \
+    tini \
+ && rm -rf /var/lib/apt/lists/*
 
-# Set environment variables
 ENV NODE_ENV=production \
     N8N_PORT=5678 \
     N8N_BASIC_AUTH_ACTIVE=false
 
-# Set working directory
 WORKDIR /data/n8n
 
-# Copy built application from builder
 COPY --from=builder /data/n8n /data/n8n
 
-# Expose port
 EXPOSE 5678
 
-# Use tini as PID 1
-ENTRYPOINT ["/sbin/tini", "--"]
-
-# Start n8n
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["n8n", "start"]
