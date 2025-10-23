@@ -1,10 +1,9 @@
 # =========================================
-# n8n Custom Dockerfile (Fixed)
+# n8n Custom Dockerfile (Fixed for Kubernetes)
 # =========================================
 
 # Use a stable Node base image
-ARG NODE_VERSION=22.18.0
-FROM node:${NODE_VERSION}-alpine AS builder
+FROM node:22.18.0-alpine
 
 # Install system dependencies
 RUN apk add --no-cache \
@@ -23,17 +22,13 @@ RUN apk add --no-cache \
     update-ms-fonts && fc-cache -f && \
     apk del msttcorefonts-installer
 
-# Install full-icu and n8n
+# Install full-icu and n8n globally
 RUN npm install -g full-icu@1.5.0 n8n
 
-# =========================================
-# Final Runtime Image
-# =========================================
-FROM node:${NODE_VERSION}-alpine
+# Ensure /usr/local/bin is in PATH for all users
+ENV PATH=/usr/local/bin:$PATH
 
-# Copy everything from builder
-COPY --from=builder / /
-
+# Set working directory
 WORKDIR /home/node
 
 # Set environment variables
@@ -43,6 +38,7 @@ ENV N8N_PORT=5678
 ENV N8N_BASIC_AUTH_ACTIVE=false
 ENV N8N_ENCRYPTION_KEY="changemeplease"
 
+# Expose n8n port
 EXPOSE 5678
 
 # Use tini as entrypoint (handles PID 1 issues)
